@@ -1,43 +1,435 @@
-// Hazard & Risk Portal - Static JavaScript
 
-// Constants
+// =====================================================
+// HAZARD & RISK PORTAL - COMPLETE JAVASCRIPT
+// =====================================================
+
+// =====================================================
+// AIRTABLE CONFIGURATION - CHANGE THESE VALUES!
+// =====================================================
+/*
+ * HOW TO GET YOUR AIRTABLE API KEY:
+ * 1. Go to https://airtable.com/create/tokens
+ * 2. Click "Create new token"
+ * 3. Give it a name (e.g., "HazardRiskPortal")
+ * 
+ * IMPORTANT SCOPES TO SELECT:
+ * ✅ data.records:read    - Read records from tables
+ * ✅ data.records:write   - Create/update/delete records
+ * ✅ schema.bases:read    - Read base schema (optional but helpful)
+ * 
+ * BASE ACCESS:
+ * - Select your "HazardRiskPortal" base
+ * - Or select "All current and future bases" for convenience
+ * 
+ * 4. Click "Create token" and copy it
+ * 5. Paste below in AIRTABLE_API_KEY
+ * 
+ * HOW TO GET YOUR BASE ID:
+ * 1. Open your base in Airtable
+ * 2. Click "Help" menu → "API documentation"
+ * 3. In the URL or docs, find the Base ID (starts with "app...")
+ * 4. Paste below in AIRTABLE_BASE_ID
+ */
+
+/*
+ * =====================================================
+ * AIRTABLE TABLE SCHEMA - CREATE THESE EXACT FIELDS!
+ * =====================================================
+ * 
+ * TABLE 1: "Stations"
+ * ┌─────────────────┬──────────────────┬─────────────────────────────────────────┐
+ * │ Field Name      │ Field Type       │ Description                             │
+ * ├─────────────────┼──────────────────┼─────────────────────────────────────────┤
+ * │ id              │ Single line text │ Primary field - Unique station ID       │
+ * │ name            │ Single line text │ Station name (e.g., "Aarey Station")    │
+ * │ columns         │ Long text        │ JSON array of column configurations     │
+ * │ enabled         │ Checkbox         │ Whether station is active/visible       │
+ * │ editedByAdmin   │ Checkbox         │ Tracks if admin has modified            │
+ * └─────────────────┴──────────────────┴─────────────────────────────────────────┘
+ * 
+ * TABLE 2: "Entries"  
+ * ┌───────────────────┬──────────────────┬─────────────────────────────────────────┐
+ * │ Field Name        │ Field Type       │ Description                             │
+ * ├───────────────────┼──────────────────┼─────────────────────────────────────────┤
+ * │ id                │ Single line text │ Primary field - Unique entry ID         │
+ * │ stationId         │ Single line text │ Links entry to a station                │
+ * │ data              │ Long text        │ JSON object with all form field values  │
+ * │ editedByController│ Checkbox         │ Tracks if controller has modified       │
+ * └───────────────────┴──────────────────┴─────────────────────────────────────────┘
+ * 
+ * IMPORTANT: Create EXACT field names (case-sensitive!)
+ * =====================================================
+ */
+
+const AIRTABLE_CONFIG = {
+  // ⬇️ PASTE YOUR API KEY HERE (starts with "pat...")
+  API_KEY: "patfXZtAQF24Ynu8K.301041af7168126b7dc01a55836482a6169347a819f316a9202ac3d96d9c4f20",
+  
+  // ⬇️ PASTE YOUR BASE ID HERE (starts with "app...")
+  BASE_ID: "appWA7YoldYBbig7U",
+  
+  // Table names - create these exact tables in Airtable
+  STATIONS_TABLE: "Stations",
+  ENTRIES_TABLE: "Entries",
+  VISITS_TABLE: "Visits"
+};
+
+/*
+ * TABLE 3: "Visits" (for visit counter)
+ * ┌─────────────────┬──────────────────┬─────────────────────────────────────────┐
+ * │ Field Name      │ Field Type       │ Description                             │
+ * ├─────────────────┼──────────────────┼─────────────────────────────────────────┤
+ * │ id              │ Single line text │ Primary field - Always "counter"        │
+ * │ count           │ Number           │ Total visit count                       │
+ * └─────────────────┴──────────────────┴─────────────────────────────────────────┘
+ */
+
+// Check if Airtable is configured
+const isAirtableConfigured = () => {
+  return AIRTABLE_CONFIG.API_KEY !== "YOUR_AIRTABLE_API_KEY_HERE" && 
+         AIRTABLE_CONFIG.BASE_ID !== "YOUR_BASE_ID_HERE";
+};
+
+// Airtable API URL
+const getAirtableUrl = (table) => 
+  `https://api.airtable.com/v0/${AIRTABLE_CONFIG.BASE_ID}/${encodeURIComponent(table)}`;
+
+// Airtable headers
+const getHeaders = () => ({
+  'Authorization': `Bearer ${AIRTABLE_CONFIG.API_KEY}`,
+  'Content-Type': 'application/json'
+});
+
+// =====================================================
+// CONSTANTS
+// =====================================================
 const LEVELS_OPTIONS = ["Ground", "Mezzanine", "Concourse", "DN Platform", "UP Platform"];
-const INFORM_TO_OPTIONS = ["Civil", "MEP", "Telecom ", "Signaling", "Fire detection", "Fire suppression ", "IT", "Traction", "Viaduct", "AFC", "Security" ];
+const INFORM_TO_OPTIONS = ["Civil", "MEP", "Telecom", "Signaling", "Fire detection", "Fire suppression", "IT", "Traction", "Viaduct", "AFC", "Security", "Other"];
 const ADMIN_PASSWORD = "Hazard2025";
+const MAX_IMAGE_SIZE = 50000; // Max base64 string length to avoid Airtable limits
 
-// State
+// =====================================================
+// STATE
+// =====================================================
 let state = {
-  currentView: "controller", // "controller" or "admin"
+  currentView: "controller",
   isAdmin: false,
   stations: [],
   entries: [],
   selectedStation: null,
   editingEntry: null,
   editingStation: null,
-  previewImage: null
+  previewImage: null,
+  visitCount: 0
 };
 
 // DOM Elements
 const app = document.getElementById("app");
 
-// Load data from localStorage
-function loadData() {
-  const savedStations = localStorage.getItem("hazard-stations");
-  const savedEntries = localStorage.getItem("hazard-entries");
-  if (savedStations) state.stations = JSON.parse(savedStations);
-  if (savedEntries) state.entries = JSON.parse(savedEntries);
+// =====================================================
+// DATA OPERATIONS (Airtable + localStorage fallback)
+// =====================================================
+
+// Fetch stations - NO DEFAULT STATIONS, only from Airtable
+async function fetchStations() {
+  if (!isAirtableConfigured()) {
+    console.warn("⚠️ Airtable not configured. Please configure Airtable to use this portal.");
+    return []; // Return empty - no default stations
+  }
+
+  try {
+    const response = await fetch(getAirtableUrl(AIRTABLE_CONFIG.STATIONS_TABLE), {
+      headers: getHeaders()
+    });
+    
+    if (!response.ok) throw new Error(`Airtable error: ${response.status}`);
+    
+    const data = await response.json();
+    return data.records.map(record => ({
+      id: record.fields.id || record.id,
+      name: record.fields.name || '',
+      columns: record.fields.columns ? JSON.parse(record.fields.columns) : [],
+      enabled: record.fields.enabled || false,
+      editedByAdmin: record.fields.editedByAdmin || false,
+      airtableRecordId: record.id
+    }));
+  } catch (error) {
+    console.error("Error fetching stations:", error);
+    return []; // Return empty on error - no localStorage fallback
+  }
 }
 
-// Save data to localStorage
-function saveStations() {
-  localStorage.setItem("hazard-stations", JSON.stringify(state.stations));
+// Create station - ONLY saves to Airtable
+async function createStationApi(station) {
+  if (!isAirtableConfigured()) {
+    showToast("Please configure Airtable to create stations", "error");
+    return null;
+  }
+
+  try {
+    const response = await fetch(getAirtableUrl(AIRTABLE_CONFIG.STATIONS_TABLE), {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        records: [{
+          fields: {
+            id: station.id,
+            name: station.name,
+            columns: JSON.stringify(station.columns),
+            enabled: station.enabled,
+            editedByAdmin: station.editedByAdmin || false
+          }
+        }]
+      })
+    });
+    
+    if (!response.ok) throw new Error(`Airtable error: ${response.status}`);
+    
+    const data = await response.json();
+    return { ...station, airtableRecordId: data.records[0].id };
+  } catch (error) {
+    console.error("Error creating station:", error);
+    showToast("Failed to create station in Airtable", "error");
+    return null;
+  }
 }
 
-function saveEntries() {
-  localStorage.setItem("hazard-entries", JSON.stringify(state.entries));
+// Update station - ONLY saves to Airtable
+async function updateStationApi(station) {
+  if (!isAirtableConfigured() || !station.airtableRecordId) {
+    showToast("Cannot update: Airtable not configured", "error");
+    return;
+  }
+
+  try {
+    await fetch(`${getAirtableUrl(AIRTABLE_CONFIG.STATIONS_TABLE)}/${station.airtableRecordId}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        fields: {
+          name: station.name,
+          columns: JSON.stringify(station.columns),
+          enabled: station.enabled,
+          editedByAdmin: station.editedByAdmin || false
+        }
+      })
+    });
+  } catch (error) {
+    console.error("Error updating station:", error);
+    showToast("Failed to update station", "error");
+  }
 }
 
-// Toast notifications
+// Delete station - ONLY deletes from Airtable
+async function deleteStationApi(stationId, airtableRecordId) {
+  if (!isAirtableConfigured() || !airtableRecordId) {
+    showToast("Cannot delete: Airtable not configured", "error");
+    return;
+  }
+
+  try {
+    await fetch(`${getAirtableUrl(AIRTABLE_CONFIG.STATIONS_TABLE)}/${airtableRecordId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+  } catch (error) {
+    console.error("Error deleting station:", error);
+    showToast("Failed to delete station", "error");
+  }
+}
+
+// Fetch entries - ONLY from Airtable
+async function fetchEntries() {
+  if (!isAirtableConfigured()) {
+    return []; // Return empty - no localStorage fallback
+  }
+
+  try {
+    const response = await fetch(getAirtableUrl(AIRTABLE_CONFIG.ENTRIES_TABLE), {
+      headers: getHeaders()
+    });
+    
+    if (!response.ok) throw new Error(`Airtable error: ${response.status}`);
+    
+    const data = await response.json();
+    return data.records.map(record => ({
+      id: record.fields.id || record.id,
+      stationId: record.fields.stationId || '',
+      data: record.fields.data ? JSON.parse(record.fields.data) : {},
+      editedByController: record.fields.editedByController || false,
+      airtableRecordId: record.id
+    }));
+  } catch (error) {
+    console.error("Error fetching entries:", error);
+    return []; // Return empty on error
+  }
+}
+
+// Create entry - ONLY saves to Airtable
+async function createEntryApi(entry) {
+  if (!isAirtableConfigured()) {
+    showToast("Please configure Airtable to create entries", "error");
+    return null;
+  }
+
+  try {
+    const response = await fetch(getAirtableUrl(AIRTABLE_CONFIG.ENTRIES_TABLE), {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        records: [{
+          fields: {
+            id: entry.id,
+            stationId: entry.stationId,
+            data: JSON.stringify(entry.data),
+            editedByController: entry.editedByController || false
+          }
+        }]
+      })
+    });
+    
+    if (!response.ok) throw new Error(`Airtable error: ${response.status}`);
+    
+    const data = await response.json();
+    return { ...entry, airtableRecordId: data.records[0].id };
+  } catch (error) {
+    console.error("Error creating entry:", error);
+    showToast("Failed to create entry", "error");
+    return null;
+  }
+}
+
+// Update entry - ONLY saves to Airtable
+async function updateEntryApi(entry) {
+  if (!isAirtableConfigured() || !entry.airtableRecordId) {
+    showToast("Cannot update: Airtable not configured", "error");
+    return;
+  }
+
+  try {
+    await fetch(`${getAirtableUrl(AIRTABLE_CONFIG.ENTRIES_TABLE)}/${entry.airtableRecordId}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        fields: {
+          data: JSON.stringify(entry.data),
+          editedByController: entry.editedByController || false
+        }
+      })
+    });
+  } catch (error) {
+    console.error("Error updating entry:", error);
+    showToast("Failed to update entry", "error");
+  }
+}
+
+// Delete entry - ONLY deletes from Airtable
+async function deleteEntryApi(entryId, airtableRecordId) {
+  if (!isAirtableConfigured() || !airtableRecordId) {
+    showToast("Cannot delete: Airtable not configured", "error");
+    return;
+  }
+
+  try {
+    await fetch(`${getAirtableUrl(AIRTABLE_CONFIG.ENTRIES_TABLE)}/${airtableRecordId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+  } catch (error) {
+    console.error("Error deleting entry:", error);
+    showToast("Failed to delete entry", "error");
+  }
+}
+
+// =====================================================
+// VISIT COUNTER
+// =====================================================
+async function getVisitCount() {
+  if (!isAirtableConfigured()) return 0;
+  
+  try {
+    const response = await fetch(getAirtableUrl(AIRTABLE_CONFIG.VISITS_TABLE), {
+      headers: getHeaders()
+    });
+    
+    if (!response.ok) return 0;
+    
+    const data = await response.json();
+    if (data.records.length > 0) {
+      return data.records[0].fields.count || 0;
+    }
+    return 0;
+  } catch (error) {
+    console.error("Error fetching visit count:", error);
+    return 0;
+  }
+}
+
+async function incrementVisitCount() {
+  if (!isAirtableConfigured()) return 0;
+  
+  try {
+    // First, get existing record
+    const response = await fetch(getAirtableUrl(AIRTABLE_CONFIG.VISITS_TABLE), {
+      headers: getHeaders()
+    });
+    
+    if (!response.ok) return 0;
+    
+    const data = await response.json();
+    
+    if (data.records.length > 0) {
+      // Update existing record
+      const record = data.records[0];
+      const newCount = (record.fields.count || 0) + 1;
+      
+      await fetch(`${getAirtableUrl(AIRTABLE_CONFIG.VISITS_TABLE)}/${record.id}`, {
+        method: 'PATCH',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          fields: { count: newCount }
+        })
+      });
+      
+      return newCount;
+    } else {
+      // Create first record
+      const createResponse = await fetch(getAirtableUrl(AIRTABLE_CONFIG.VISITS_TABLE), {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          records: [{
+            fields: {
+              id: "counter",
+              count: 1
+            }
+          }]
+        })
+      });
+      
+      if (createResponse.ok) return 1;
+      return 0;
+    }
+  } catch (error) {
+    console.error("Error incrementing visit count:", error);
+    return 0;
+  }
+}
+
+// =====================================================
+// LOAD DATA
+// =====================================================
+async function loadData() {
+  state.stations = await fetchStations();
+  state.entries = await fetchEntries();
+  
+  // Increment and get visit count
+  state.visitCount = await incrementVisitCount();
+}
+
+// =====================================================
+// TOAST NOTIFICATIONS
+// =====================================================
 function showToast(message, type = "success") {
   const container = document.querySelector(".toast-container") || createToastContainer();
   const toast = document.createElement("div");
@@ -54,12 +446,16 @@ function createToastContainer() {
   return container;
 }
 
-// Generate unique ID
+// =====================================================
+// UTILITY FUNCTIONS
+// =====================================================
 function generateId() {
   return Date.now().toString();
 }
 
-// Icons (SVG strings)
+// =====================================================
+// ICONS (SVG strings)
+// =====================================================
 const icons = {
   alertTriangle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
   shield: `<svg viewBox="0 0 24 24" fill="none" width="40px" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
@@ -74,10 +470,12 @@ const icons = {
   x: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
   building: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>`,
   document: `<svg viewBox="0 0 24 24" fill="none" width="40px" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>`,
-  archive: `<svg viewBox="0 0 24 24" fill="none"  stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>`
+  archive: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>`
 };
 
-// Render functions
+// =====================================================
+// RENDER FUNCTIONS
+// =====================================================
 function render() {
   app.innerHTML = `
     ${renderNavbar()}
@@ -110,7 +508,7 @@ function renderNavbar() {
           ${state.currentView === "controller" ? `
             <button class="btn btn-accent" onclick="openLoginDialog()">
               ${icons.shield}
-              SM Login
+              ASM Login
             </button>
           ` : ""}
         </div>
@@ -128,15 +526,31 @@ function getMaskedAdminId() {
 }
 
 function renderFooter() {
+  const airtableConnected = isAirtableConfigured();
   return `
     <footer class="footer">
       <div class="footer-content">
         <div class="footer-text">
           <p>© 2025 Hazard and Risk Portal. All rights reserved.</p>
+          <p class="visit-counter">Total Visits: ${state.visitCount.toLocaleString()}</p>
         </div>
         <div class="footer-credits">
           <p>Created by Prashant Golhar</p>
           <p>Station Managers : Prashant Gaikwad • Jagdish Billakanti</p>
+          ${state.isAdmin && state.currentView === "admin" ? `
+            <div style="margin-top: 0.5rem;">
+              ${airtableConnected ? `
+                <span class="live-indicator">
+                  <span class="live-dot"></span>
+                  Page is Live (Airtable Connected)
+                </span>
+              ` : `
+                <span style="font-size: 0.75rem; opacity: 0.75;">
+                  Using localStorage (Airtable not configured)
+                </span>
+              `}
+            </div>
+          ` : ""}
         </div>
       </div>
     </footer>
@@ -152,7 +566,7 @@ function renderAdminDashboard() {
       <div class="main-overlay"></div>
       <div class="content-wrapper">
         <div class="page-header">
-          <h1 class="page-title">SM Dashboard</h1>
+          <h1 class="page-title">ASM Dashboard</h1>
           <div class="flex gap-3">
             <button class="btn btn-outline" onclick="switchToController()">
               ${icons.gauge}
@@ -457,7 +871,7 @@ function renderDialogs() {
     <div id="loginDialog" class="dialog-overlay">
       <div class="dialog">
         <div class="dialog-header">
-          <div class="dialog-title">${icons.shield}SM Login</div>
+          <div class="dialog-title">${icons.shield}ASM Login</div>
         </div>
         <div class="dialog-body">
           <div class="form-group">
@@ -555,9 +969,10 @@ function renderDialogs() {
   `;
 }
 
-// Event handlers
+// =====================================================
+// EVENT HANDLERS
+// =====================================================
 function attachEventListeners() {
-  // Close dialogs when clicking overlay
   document.querySelectorAll(".dialog-overlay").forEach(overlay => {
     overlay.addEventListener("click", (e) => {
       if (e.target === overlay) {
@@ -619,7 +1034,9 @@ function goBackController() {
   render();
 }
 
-// Station management
+// =====================================================
+// STATION MANAGEMENT
+// =====================================================
 let newColumns = [];
 
 function openAddStationDialog() {
@@ -668,7 +1085,7 @@ function removeNewColumn(index) {
   renderNewColumns();
 }
 
-function createStation() {
+async function createStation() {
   const name = document.getElementById("newStationName").value.trim();
   if (!name) {
     showToast("Please enter a station name", "error");
@@ -686,35 +1103,46 @@ function createStation() {
     enabled: true
   };
   
-  state.stations.push(station);
-  saveStations();
+  const created = await createStationApi(station);
+  state.stations.push(created);
   closeDialog("addStationDialog");
   showToast("Station created successfully");
   render();
 }
 
-function toggleStationStatus(stationId) {
+async function toggleStationStatus(stationId) {
   const station = state.stations.find(s => s.id === stationId);
   if (station) {
     station.enabled = !station.enabled;
-    saveStations();
+    await updateStationApi(station);
     showToast(`Station ${station.enabled ? 'enabled' : 'disabled'}`);
     render();
   }
 }
 
-function deleteStation(stationId) {
+async function deleteStation(stationId) {
   if (confirm("Are you sure you want to delete this station?")) {
-    state.stations = state.stations.filter(s => s.id !== stationId);
+    const station = state.stations.find(s => s.id === stationId);
+    
+    // Delete entries for this station
+    const stationEntries = state.entries.filter(e => e.stationId === stationId);
+    for (const entry of stationEntries) {
+      await deleteEntryApi(entry.id, entry.airtableRecordId);
+    }
     state.entries = state.entries.filter(e => e.stationId !== stationId);
-    saveStations();
-    saveEntries();
+    
+    // Delete station
+    await deleteStationApi(stationId, station?.airtableRecordId);
+    state.stations = state.stations.filter(s => s.id !== stationId);
+    
     showToast("Station deleted");
     render();
   }
 }
 
-// Edit Station
+// =====================================================
+// EDIT STATION
+// =====================================================
 let editColumns = [];
 let editingStationId = null;
 
@@ -768,7 +1196,7 @@ function removeEditColumn(index) {
   renderEditColumns();
 }
 
-function saveStationEdit() {
+async function saveStationEdit() {
   if (editColumns.length === 0) {
     showToast("Please add at least one column", "error");
     return;
@@ -778,14 +1206,16 @@ function saveStationEdit() {
   if (station) {
     station.columns = [...editColumns];
     station.editedByAdmin = true;
-    saveStations();
+    await updateStationApi(station);
     closeDialog("editStationDialog");
     showToast("Station updated successfully");
     render();
   }
 }
 
-// Entry management
+// =====================================================
+// ENTRY MANAGEMENT
+// =====================================================
 let entryData = {};
 let editingEntryId = null;
 let entryStationId = null;
@@ -841,33 +1271,47 @@ function renderEntryForm(stationId) {
   if (!station) return;
   
   const container = document.getElementById("entryFormContainer");
-  container.innerHTML = station.columns.map(col => `
+  container.innerHTML = station.columns.map(col => {
+    const currentValue = entryData[col.id] || '';
+    const isOtherSelected = col.type === "informs" && currentValue && !INFORM_TO_OPTIONS.slice(0, -1).includes(currentValue);
+    
+    return `
     <div class="form-group">
       <label class="form-label">${col.name}</label>
       ${col.type === "text" ? `
-        <input type="text" class="form-input" value="${entryData[col.id] || ''}" onchange="updateEntryData('${col.id}', this.value)" placeholder="Enter ${col.name.toLowerCase()}">
+        <input type="text" class="form-input" value="${currentValue}" onchange="updateEntryData('${col.id}', this.value)" placeholder="Enter ${col.name.toLowerCase()}">
       ` : col.type === "date" ? `
-        <input type="date" class="form-input" value="${entryData[col.id] || ''}" onchange="updateEntryData('${col.id}', this.value)">
+        <input type="date" class="form-input" value="${currentValue}" onchange="updateEntryData('${col.id}', this.value)">
       ` : col.type === "levels" ? `
         <select class="form-select" onchange="updateEntryData('${col.id}', this.value)">
           <option value="">Select Level</option>
-          ${LEVELS_OPTIONS.map(level => `<option value="${level}" ${entryData[col.id] === level ? 'selected' : ''}>${level}</option>`).join("")}
+          ${LEVELS_OPTIONS.map(level => `<option value="${level}" ${currentValue === level ? 'selected' : ''}>${level}</option>`).join("")}
         </select>
-
-
       ` : col.type === "informs" ? `
-        <select class="form-select" onchange="updateEntryData('${col.id}', this.value)">
+        <select class="form-select" onchange="handleInformToChange('${col.id}', this.value)">
           <option value="">Select Department</option>
-          ${INFORM_TO_OPTIONS.map(level => `<option value="${level}" ${entryData[col.id] === level ? 'selected' : ''}>${level}</option>`).join("")}
+          ${INFORM_TO_OPTIONS.map(opt => `<option value="${opt}" ${(opt === "Other" && isOtherSelected) || currentValue === opt ? 'selected' : ''}>${opt}</option>`).join("")}
         </select>
-
-    
+        <div id="other-${col.id}" class="other-input-container" style="display: ${isOtherSelected ? 'block' : 'none'}; margin-top: 0.5rem;">
+          <input type="text" class="form-input" value="${isOtherSelected ? currentValue : ''}" onchange="updateEntryData('${col.id}', this.value)" placeholder="Enter department name">
+        </div>
       ` : `
         <input type="file" class="form-input" accept="image/*" onchange="handleFileUpload('${col.id}', this)">
-        ${entryData[col.id] ? `<img src="${entryData[col.id]}" alt="Preview" style="width: 128px; height: 128px; object-fit: cover; border-radius: 0.5rem; margin-top: 0.5rem; border: 1px solid var(--border);">` : ''}
+        <div id="upload-status-${col.id}" style="margin-top: 0.25rem; font-size: 0.75rem; color: var(--muted-foreground);"></div>
+        ${currentValue ? `<img src="${currentValue}" alt="Preview" style="width: 128px; height: 128px; object-fit: cover; border-radius: 0.5rem; margin-top: 0.5rem; border: 1px solid var(--border);">` : ''}
       `}
     </div>
-  `).join("");
+  `}).join("");
+}
+
+function handleInformToChange(columnId, value) {
+  if (value === "Other") {
+    document.getElementById(`other-${columnId}`).style.display = 'block';
+    entryData[columnId] = ''; // Clear until user types
+  } else {
+    document.getElementById(`other-${columnId}`).style.display = 'none';
+    entryData[columnId] = value;
+  }
 }
 
 function updateEntryData(columnId, value) {
@@ -876,19 +1320,66 @@ function updateEntryData(columnId, value) {
 
 function handleFileUpload(columnId, input) {
   const file = input.files?.[0];
-  if (file && file.type.startsWith('image/')) {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      entryData[columnId] = reader.result;
-      renderEntryForm(entryStationId);
-    };
-    reader.readAsDataURL(file);
-  } else {
+  if (!file) return;
+  
+  if (!file.type.startsWith('image/')) {
     showToast("Please upload an image file", "error");
+    return;
   }
+  
+  const statusEl = document.getElementById(`upload-status-${columnId}`);
+  if (statusEl) statusEl.textContent = "Processing image...";
+  
+  // Compress image before storing
+  compressImage(file, (compressedBase64) => {
+    if (compressedBase64.length > MAX_IMAGE_SIZE) {
+      showToast("Image too large. Please use a smaller image.", "error");
+      if (statusEl) statusEl.textContent = "Image too large!";
+      return;
+    }
+    
+    entryData[columnId] = compressedBase64;
+    if (statusEl) statusEl.textContent = "Image ready!";
+    renderEntryForm(entryStationId);
+  });
 }
 
-function saveEntry() {
+function compressImage(file, callback) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      // Max dimensions for compression
+      const maxWidth = 400;
+      const maxHeight = 400;
+      
+      let width = img.width;
+      let height = img.height;
+      
+      // Scale down if needed
+      if (width > maxWidth || height > maxHeight) {
+        const ratio = Math.min(maxWidth / width, maxHeight / height);
+        width = Math.floor(width * ratio);
+        height = Math.floor(height * ratio);
+      }
+      
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      // Convert to compressed JPEG
+      const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
+      callback(compressedBase64);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function saveEntry() {
   if (editingEntryId) {
     // Edit existing
     const entry = state.entries.find(e => e.id === editingEntryId);
@@ -897,7 +1388,7 @@ function saveEntry() {
       if (isControllerEdit) {
         entry.editedByController = true;
       }
-      saveEntries();
+      await updateEntryApi(entry);
       showToast("Entry updated successfully");
     }
   } else {
@@ -905,27 +1396,37 @@ function saveEntry() {
     const newEntry = {
       id: generateId(),
       stationId: entryStationId,
-      data: {...entryData}
+      data: {...entryData},
+      editedByController: false
     };
-    state.entries.push(newEntry);
-    saveEntries();
-    showToast("Entry added successfully");
+    
+    const created = await createEntryApi(newEntry);
+    if (created) {
+      state.entries.push(created);
+      showToast("Entry added successfully");
+    } else {
+      showToast("Failed to save entry", "error");
+      return;
+    }
   }
   
   closeDialog("entryDialog");
   render();
 }
 
-function deleteEntry(entryId) {
+async function deleteEntry(entryId) {
   if (confirm("Are you sure you want to delete this entry?")) {
+    const entry = state.entries.find(e => e.id === entryId);
+    await deleteEntryApi(entryId, entry?.airtableRecordId);
     state.entries = state.entries.filter(e => e.id !== entryId);
-    saveEntries();
     showToast("Entry deleted");
     render();
   }
 }
 
-// Image preview
+// =====================================================
+// IMAGE PREVIEW
+// =====================================================
 function openImagePreview(entryId, columnId) {
   const entry = state.entries.find(e => e.id === entryId);
   if (entry && entry.data[columnId]) {
@@ -934,14 +1435,15 @@ function openImagePreview(entryId, columnId) {
   }
 }
 
-// Export to Excel (basic CSV export)
+// =====================================================
+// EXPORT TO EXCEL
+// =====================================================
 function exportToExcel(stationId) {
   const station = state.stations.find(s => s.id === stationId);
   if (!station) return;
   
   const entries = state.entries.filter(e => e.stationId === stationId);
   
-  // Create CSV content
   const headers = ["Sr No", ...station.columns.map(c => c.name)];
   const rows = entries.map((entry, index) => {
     return [
@@ -958,7 +1460,6 @@ function exportToExcel(stationId) {
     .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
     .join("\n");
   
-  // Download
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
@@ -968,8 +1469,10 @@ function exportToExcel(stationId) {
   showToast("Data exported successfully");
 }
 
-// Initialize
-document.addEventListener("DOMContentLoaded", () => {
-  loadData();
+// =====================================================
+// INITIALIZE
+// =====================================================
+document.addEventListener("DOMContentLoaded", async () => {
+  await loadData();
   render();
 });

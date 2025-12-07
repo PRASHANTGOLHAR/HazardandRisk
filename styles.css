@@ -1,4 +1,7 @@
-/* Hazard & Risk Portal - Static CSS */
+/* =====================================================
+   HAZARD & RISK PORTAL - COMPLETE STYLES
+   ===================================================== */
+
 * {
   margin: 0;
   padding: 0;
@@ -51,7 +54,9 @@ body {
   min-height: 100vh;
 }
 
-/* Navbar */
+/* =====================================================
+   NAVBAR
+   ===================================================== */
 .navbar {
   background: linear-gradient(to right, var(--hazard-primary), var(--hazard-primary-dark), var(--hazard-primary));
   border-bottom: 1px solid rgba(255, 166, 0, 0.2);
@@ -137,7 +142,9 @@ body {
   font-weight: 500;
 }
 
-/* Buttons */
+/* =====================================================
+   BUTTONS
+   ===================================================== */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -208,11 +215,14 @@ body {
   background: hsl(0, 84%, 55%);
 }
 
-/* Main Content */
+/* =====================================================
+   MAIN CONTENT WITH BACKGROUND
+   ===================================================== */
 .main-content {
   flex: 1;
   position: relative;
   padding: 1.5rem;
+  background-image: url('images/hazard-bg.jpg');
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
@@ -221,7 +231,7 @@ body {
 .main-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(248, 250, 252, 0.85);
+  background: rgba(248, 250, 252, 0.88);
   backdrop-filter: blur(4px);
 }
 
@@ -252,7 +262,9 @@ body {
   margin-top: 0.5rem;
 }
 
-/* Cards */
+/* =====================================================
+   CARDS
+   ===================================================== */
 .card {
   background: var(--card);
   border: 1px solid var(--border);
@@ -287,7 +299,9 @@ body {
   align-items: flex-start;
 }
 
-/* Grid */
+/* =====================================================
+   GRID
+   ===================================================== */
 .grid {
   display: grid;
   gap: 1.5rem;
@@ -297,7 +311,9 @@ body {
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
 }
 
-/* Station Card */
+/* =====================================================
+   STATION CARD
+   ===================================================== */
 .station-icon {
   background: linear-gradient(135deg, var(--primary), var(--accent));
   padding: 0.5rem;
@@ -366,7 +382,9 @@ body {
   50% { opacity: 0.5; }
 }
 
-/* Table */
+/* =====================================================
+   TABLE
+   ===================================================== */
 .table-container {
   overflow-x: auto;
 }
@@ -405,7 +423,9 @@ tbody tr:hover {
   background: rgba(0, 0, 0, 0.02);
 }
 
-/* Dialog/Modal */
+/* =====================================================
+   DIALOG/MODAL
+   ===================================================== */
 .dialog-overlay {
   position: fixed;
   inset: 0;
@@ -479,7 +499,9 @@ tbody tr:hover {
   color: var(--foreground);
 }
 
-/* Form Elements */
+/* =====================================================
+   FORM ELEMENTS
+   ===================================================== */
 .form-group {
   margin-bottom: 1rem;
 }
@@ -520,7 +542,9 @@ tbody tr:hover {
   cursor: pointer;
 }
 
-/* Column Item */
+/* =====================================================
+   COLUMN ITEM
+   ===================================================== */
 .column-item {
   display: flex;
   gap: 0.5rem;
@@ -536,7 +560,9 @@ tbody tr:hover {
   flex: 1;
 }
 
-/* Image Preview */
+/* =====================================================
+   IMAGE PREVIEW
+   ===================================================== */
 .image-thumbnail {
   width: 48px;
   height: 48px;
@@ -569,7 +595,9 @@ tbody tr:hover {
   height: auto;
 }
 
-/* Footer */
+/* =====================================================
+   FOOTER
+   ===================================================== */
 .footer {
   background: var(--primary);
   color: var(--primary-foreground);
@@ -611,7 +639,9 @@ tbody tr:hover {
   margin-top: 0.25rem;
 }
 
-/* Empty State */
+/* =====================================================
+   EMPTY STATE
+   ===================================================== */
 .empty-state {
   text-align: center;
   padding: 3rem;
@@ -641,7 +671,9 @@ tbody tr:hover {
   color: var(--muted-foreground);
 }
 
-/* Disabled Station Warning */
+/* =====================================================
+   DISABLED STATION WARNING
+   ===================================================== */
 .disabled-warning {
   border-color: rgba(239, 68, 68, 0.5);
   background: rgba(239, 68, 68, 0.05);
@@ -660,7 +692,9 @@ tbody tr:hover {
   color: var(--hazard-danger);
 }
 
-/* Levels Badge */
+/* =====================================================
+   LEVELS BADGE
+   ===================================================== */
 .levels-badge {
   padding: 0.25rem 0.5rem;
   background: rgba(255, 102, 0, 0.1);
@@ -668,14 +702,18 @@ tbody tr:hover {
   font-size: 0.875rem;
 }
 
-/* Actions */
+/* =====================================================
+   ACTIONS
+   ===================================================== */
 .actions-cell {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
 }
 
-/* Toast */
+/* =====================================================
+   TOAST
+   ===================================================== */
 .toast-container {
   position: fixed;
   bottom: 1rem;
@@ -712,7 +750,32 @@ tbody tr:hover {
   }
 }
 
-/* Utility */
+/* =====================================================
+   LIVE INDICATOR
+   ===================================================== */
+.live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  background: rgba(34, 197, 94, 0.2);
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--hazard-success);
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--hazard-success);
+  border-radius: 50%;
+  animation: pulse 1.5s infinite;
+}
+
+/* =====================================================
+   UTILITY CLASSES
+   ===================================================== */
 .hidden {
   display: none !important;
 }
@@ -757,7 +820,19 @@ tbody tr:hover {
   width: 100%;
 }
 
-/* Responsive */
+/* =====================================================
+   VISIT COUNTER
+   ===================================================== */
+.visit-counter {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: 0.25rem;
+  font-weight: 500;
+}
+
+/* =====================================================
+   RESPONSIVE
+   ===================================================== */
 @media (max-width: 768px) {
   .navbar-content {
     flex-direction: column;
@@ -772,5 +847,49 @@ tbody tr:hover {
   .page-header .flex {
     width: 100%;
     flex-wrap: wrap;
+  }
+  
+  .footer-content {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .dialog {
+    margin: 1rem;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  
+  .table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  
+  table {
+    min-width: 600px;
+  }
+  
+  .btn {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+  }
+  
+  .grid-cols-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .navbar-brand {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .navbar-title {
+    font-size: 1rem;
+  }
+  
+  .page-title {
+    font-size: 1.25rem;
   }
 }
