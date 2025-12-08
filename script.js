@@ -532,17 +532,17 @@ function renderFooter() {
       <div class="footer-content">
         <div class="footer-text">
           <p>© 2025 Hazard and Risk Portal. All rights reserved.</p>
-          <p class="visit-counter">Total Visits: ${state.visitCount.toLocaleString()}</p>
+          <p class="visit-counter">Total Visitors: ${state.visitCount.toLocaleString()}</p>
         </div>
         <div class="footer-credits">
           <p>Created by Prashant Golhar</p>
-          <p>Station Managers : Prashant Gaikwad • Jagdish Billakanti</p>
+          
           ${state.isAdmin && state.currentView === "admin" ? `
             <div style="margin-top: 0.5rem;">
               ${airtableConnected ? `
                 <span class="live-indicator">
                   <span class="live-dot"></span>
-                  Page is Live (Airtable Connected)
+                  Page is Live 
                 </span>
               ` : `
                 <span style="font-size: 0.75rem; opacity: 0.75;">
@@ -566,7 +566,7 @@ function renderAdminDashboard() {
       <div class="main-overlay"></div>
       <div class="content-wrapper">
         <div class="page-header">
-          <h1 class="page-title">ASM Dashboard</h1>
+          <h1 class="page-title">SM Dashboard</h1>
           <div class="flex gap-3">
             <button class="btn btn-outline" onclick="switchToController()">
               ${icons.gauge}
@@ -888,7 +888,7 @@ function renderDialogs() {
     
     <!-- Add Station Dialog -->
     <div id="addStationDialog" class="dialog-overlay">
-      <div class="dialog">
+      <div class="dialog dialog-station">
         <div class="dialog-header">
           <div class="dialog-title">Create New Station</div>
           <div class="dialog-description">Create a new station with custom columns to manage hazard and risk data entries.</div>
@@ -898,7 +898,7 @@ function renderDialogs() {
             <label class="form-label">Station Name</label>
             <input type="text" id="newStationName" class="form-input" placeholder="Enter station name">
           </div>
-          <div class="form-group">
+          <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
             <div class="flex items-center" style="justify-content: space-between; margin-bottom: 0.5rem;">
               <label class="form-label" style="margin-bottom: 0;">Columns</label>
               <button class="btn btn-outline" onclick="addNewColumn()">
@@ -906,7 +906,7 @@ function renderDialogs() {
                 Add Column
               </button>
             </div>
-            <div id="newColumnsContainer" style="max-height: 300px; overflow-y: auto;"></div>
+            <div id="newColumnsContainer" style="flex: 1; overflow-y: auto;"></div>
           </div>
         </div>
         <div class="dialog-footer">
@@ -933,13 +933,13 @@ function renderDialogs() {
     
     <!-- Edit Station Dialog -->
     <div id="editStationDialog" class="dialog-overlay">
-      <div class="dialog">
+      <div class="dialog dialog-station">
         <div class="dialog-header">
           <div class="dialog-title" id="editStationTitle">Edit Station</div>
           <div class="dialog-description">Modify the columns for this station.</div>
         </div>
         <div class="dialog-body">
-          <div class="form-group">
+          <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
             <div class="flex items-center" style="justify-content: space-between; margin-bottom: 0.5rem;">
               <label class="form-label" style="margin-bottom: 0;">Columns</label>
               <button class="btn btn-outline" onclick="addEditColumn()">
@@ -947,7 +947,7 @@ function renderDialogs() {
                 Add Column
               </button>
             </div>
-            <div id="editColumnsContainer" style="max-height: 400px; overflow-y: auto;"></div>
+            <div id="editColumnsContainer" style="flex: 1; overflow-y: auto;"></div>
           </div>
         </div>
         <div class="dialog-footer">
@@ -1207,8 +1207,18 @@ async function saveStationEdit() {
     station.columns = [...editColumns];
     station.editedByAdmin = true;
     await updateStationApi(station);
+    
+    // Reset editedByController for all entries of this station so they can be edited again
+    const stationEntries = state.entries.filter(e => e.stationId === editingStationId);
+    for (const entry of stationEntries) {
+      if (entry.editedByController) {
+        entry.editedByController = false;
+        await updateEntryApi(entry);
+      }
+    }
+    
     closeDialog("editStationDialog");
-    showToast("Station updated successfully");
+    showToast("Station updated. Controllers can now edit entries again.");
     render();
   }
 }
@@ -1270,6 +1280,7 @@ function renderEntryForm(stationId) {
   const station = state.stations.find(s => s.id === stationId);
   if (!station) return;
   
+  const today = new Date().toISOString().split('T')[0];
   const container = document.getElementById("entryFormContainer");
   container.innerHTML = station.columns.map(col => {
     const currentValue = entryData[col.id] || '';
@@ -1281,7 +1292,7 @@ function renderEntryForm(stationId) {
       ${col.type === "text" ? `
         <input type="text" class="form-input" value="${currentValue}" onchange="updateEntryData('${col.id}', this.value)" placeholder="Enter ${col.name.toLowerCase()}">
       ` : col.type === "date" ? `
-        <input type="date" class="form-input" value="${currentValue}" onchange="updateEntryData('${col.id}', this.value)">
+       <input type="date" class="form-input" value="${currentValue}" max="${today}" onchange="updateEntryData('${col.id}', this.value)">
       ` : col.type === "levels" ? `
         <select class="form-select" onchange="updateEntryData('${col.id}', this.value)">
           <option value="">Select Level</option>
@@ -1438,35 +1449,149 @@ function openImagePreview(entryId, columnId) {
 // =====================================================
 // EXPORT TO EXCEL
 // =====================================================
-function exportToExcel(stationId) {
+async function exportToExcel(stationId) {
   const station = state.stations.find(s => s.id === stationId);
   if (!station) return;
   
   const entries = state.entries.filter(e => e.stationId === stationId);
   
-  const headers = ["Sr No", ...station.columns.map(c => c.name)];
-  const rows = entries.map((entry, index) => {
-    return [
-      index + 1,
-      ...station.columns.map(col => {
-        if (col.type === "file") return entry.data[col.id] ? "Image" : "";
-        if (col.type === "date" && entry.data[col.id]) return new Date(entry.data[col.id]).toLocaleDateString();
-        return entry.data[col.id] || "";
-      })
-    ];
-  });
+  showToast("Generating Excel file...");
   
-  const csvContent = [headers, ...rows]
-    .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-    .join("\n");
-  
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `${station.name}_${new Date().toISOString().split('T')[0]}.csv`;
-  link.click();
-  
-  showToast("Data exported successfully");
+  try {
+    // Create workbook and worksheet
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Hazard & Risk Portal';
+    workbook.created = new Date();
+    
+    const worksheet = workbook.addWorksheet(station.name, {
+      views: [{ state: 'frozen', ySplit: 1 }]
+    });
+    
+    // Define headers - UPPERCASE
+    const headers = ["SR NO", ...station.columns.map(c => c.name.toUpperCase())];
+    
+    // Track which columns have images for sizing
+    const imageColumns = station.columns.map((col, idx) => col.type === "file" ? idx + 2 : -1).filter(i => i > -1);
+    
+    // Add header row
+    const headerRow = worksheet.addRow(headers);
+    
+    // Style header row
+    headerRow.height = 30;
+    headerRow.eachCell((cell, colNumber) => {
+      cell.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF003366' }
+      };
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF000000' } },
+        left: { style: 'thin', color: { argb: 'FF000000' } },
+        bottom: { style: 'thin', color: { argb: 'FF000000' } },
+        right: { style: 'thin', color: { argb: 'FF000000' } }
+      };
+    });
+    
+    // Set column widths - 5cm = ~19 characters for image columns, others auto
+    const CM_TO_WIDTH = 4.5; // Approximate conversion
+    worksheet.columns = headers.map((header, idx) => {
+      if (imageColumns.includes(idx + 1)) {
+        return { width: 5 * CM_TO_WIDTH }; // 5cm width for image columns
+      }
+      return { width: Math.max(header.length + 5, 15) };
+    });
+    
+    // Process entries
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      const rowData = [i + 1];
+      const rowImageData = []; // Track images to add after row creation
+      
+      for (let colIdx = 0; colIdx < station.columns.length; colIdx++) {
+        const col = station.columns[colIdx];
+        
+        if (col.type === "file" && entry.data[col.id]) {
+          rowData.push(""); // Placeholder for image
+          rowImageData.push({ colIndex: colIdx + 2, imageData: entry.data[col.id] });
+        } else if (col.type === "date" && entry.data[col.id]) {
+          rowData.push(new Date(entry.data[col.id]).toLocaleDateString());
+        } else {
+          rowData.push(entry.data[col.id] || "");
+        }
+      }
+      
+      const row = worksheet.addRow(rowData);
+      
+      // Set row height for images (5cm = ~142 pixels = ~106 points)
+      const hasImages = rowImageData.length > 0;
+      if (hasImages) {
+        row.height = 142; // 5cm height
+      } else {
+        row.height = 25;
+      }
+      
+      // Style data cells - center aligned
+      row.eachCell((cell, colNumber) => {
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+          left: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+          bottom: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+          right: { style: 'thin', color: { argb: 'FFD0D0D0' } }
+        };
+        // Alternate row colors
+        if (i % 2 === 0) {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFF8F9FA' }
+          };
+        }
+      });
+      
+      // Add images
+      for (const imgData of rowImageData) {
+        try {
+          // Extract base64 data
+          const base64Match = imgData.imageData.match(/^data:image\/(png|jpeg|jpg|gif);base64,(.+)$/);
+          if (base64Match) {
+            const extension = base64Match[1] === 'jpg' ? 'jpeg' : base64Match[1];
+            const base64String = base64Match[2];
+            
+            const imageId = workbook.addImage({
+              base64: base64String,
+              extension: extension
+            });
+            
+            // 5cm x 5cm = approximately 189 x 189 pixels at 96 DPI
+            // Position image in cell with some padding
+            worksheet.addImage(imageId, {
+              tl: { col: imgData.colIndex - 1 + 0.1, row: row.number - 1 + 0.1 },
+              ext: { width: 170, height: 170 } // Slightly smaller than cell for padding
+            });
+          }
+        } catch (imgError) {
+          console.error("Error adding image:", imgError);
+        }
+      }
+    }
+    
+    // Generate Excel file
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `${station.name}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    link.click();
+    
+    showToast("Excel exported successfully with images!");
+  } catch (error) {
+    console.error("Export error:", error);
+    showToast("Export failed. Please try again.", "error");
+  }
 }
 
 // =====================================================
