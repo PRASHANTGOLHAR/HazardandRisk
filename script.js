@@ -536,6 +536,7 @@ function renderFooter() {
         </div>
         <div class="footer-credits">
           <p>Created by Prashant Golhar</p>
+          <p>Department : Operations</p>
           
           ${state.isAdmin && state.currentView === "admin" ? `
             <div style="margin-top: 0.5rem;">
@@ -566,18 +567,19 @@ function renderAdminDashboard() {
       <div class="main-overlay"></div>
       <div class="content-wrapper">
         <div class="page-header">
-          <h1 class="page-title">SM Dashboard</h1>
+          <h1 class="page-title">ASM Dashboard</h1>
           <div class="flex gap-3">
-            <button class="btn btn-outline" onclick="switchToController()">
-              ${icons.gauge}
-              Station Dashboard
-            </button>
-            <button class="btn btn-primary" onclick="openAddStationDialog()">
-              ${icons.plus}
-              Add Station
-            </button>
+          <button class="btn btn-outline" onclick="switchToController()">
+          ${icons.gauge}
+          Station Dashboard
+          </button>
+          <button class="btn btn-primary" onclick="openAddStationDialog()">
+          ${icons.plus}
+          Add Station
+          </button>
           </div>
-        </div>
+          </div>
+          
         <div class="grid grid-cols-3">
           ${state.stations.map((station, index) => renderStationCard(station, index, true)).join("")}
         </div>
@@ -712,7 +714,7 @@ function renderControllerDashboard() {
         <div class="page-header">
           <div>
             <h1 class="page-title">Station Dashboard</h1>
-            <p class="page-subtitle">Register your observation now</p>
+            <p class="page-subtitle">Welcome..! Your safety is our top priority. We encourage everyone to stay alert, be aware of potential hazards, and report any concerns immediately.</p>
           </div>
         </div>
         <div class="grid grid-cols-3">
